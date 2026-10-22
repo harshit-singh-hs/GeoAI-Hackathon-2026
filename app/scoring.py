@@ -260,7 +260,7 @@ def score_hour(act: Activity, lim: dict, venue: dict, pc: PlaceContext, t: datet
     # Downwind of roads / industry: the place-and-hour interaction.
     exposure, dw_notes = downwind_exposure(pc, wd, ws, t)
     if exposure > 0.08:
-        p = min(30.0, 28 * exposure * (0.5 + 0.5 * act.exertion) * lim["aqi_factor"] ** 0.5)
+        p = min(20.0, 22 * exposure * (0.5 + 0.5 * act.exertion) * lim["aqi_factor"] ** 0.5)  # an estimate: shifts, doesn't dominate
         pen.append((p, "downwind of " + "; ".join(dw_notes[:2]) if dw_notes else "near traffic emissions"))
 
     # Photography: light quality.

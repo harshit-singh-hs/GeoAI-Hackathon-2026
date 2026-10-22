@@ -48,7 +48,9 @@ def _hm(t: datetime) -> str:
 
 
 async def run(query: str, llm=None, lat: float | None = None, lon: float | None = None,
-              now_utc: datetime | None = None) -> dict:
+              now_utc: datetime | None = None, transform=None) -> dict:
+    """`transform(wx, aq) -> (wx, aq)` exists only for fine-tuning data generation (weather-scenario augmentation of
+    the fact sheets used as training inputs). The API never sets it: answers always use the data as fetched."""
     t_start = time.time()
     trace = start_trace()
     query = (query or "").strip()[:500]
@@ -104,6 +106,10 @@ async def run(query: str, llm=None, lat: float | None = None, lon: float | None 
     tz = ZoneInfo(tzname)
     now = (now_utc or datetime.now(timezone.utc)).astimezone(tz).replace(tzinfo=None)
     win = resolve(query, now)
+    if win.days and not win.slots(now) and "past_time" not in win.notes and max(win.days) <= now.date():
+        # "this evening" asked at 22:30: the window has passed, so plan the same part of day tomorrow.
+        win.days = [now.date() + timedelta(days=1)]
+        win.label = f"tomorrow ({win.label} has already passed)"
     res["understood"].update(resolved_location=geo["display_name"], timezone=tzname, window=win.label,
                              now_local=now.isoformat(timespec="minutes"),
                              window_days=[d.isoformat() for d in win.days], window_hours=list(win.hours),
@@ -124,7 +130,7 @@ async def run(query: str, llm=None, lat: float | None = None, lon: float | None 
     # ---------------------------------------------------------------- venues
     osm_src = "n/a"
     if pq.commute or (act.id == "cycling" and pq.intent == "go_no_go"):
-        venues = [_pseudo_venue(geo, "your route / area")]
+        venues = [_pseudo_venue(geo, f"{geo['name']} (your area)")]
     else:
         venues, osm_src = await find_venues(act, geo["lat"], geo["lon"], radius)
         if len(venues) < 3 and not pq.radius_km and radius < 60:
@@ -159,6 +165,9 @@ async def run(query: str, llm=None, lat: float | None = None, lon: float | None 
             "I couldn't reach the live weather service just now, and I won't guess the weather. "
             f"Please try again in a minute. ({e})"))
         return finish(res)
+
+    if transform is not None:
+        wx, aq = transform(wx, aq)
 
     # ---------------------------------------------------------------- score place x hour
     slots = win.slots(now)
@@ -284,7 +293,12 @@ def _rec_dict(rank: int, r: dict, act, win) -> dict:
     s, v = r["s"], r["s"]["venue"]
     first = r["block"][0]
     worst = min(r["block"], key=lambda b: b.score)
-    cautions = list(dict.fromkeys([x for b in r["block"] for x in b.reasons]))[:5]
+    cautions, seen_cat = [], set()
+    for x in (x for b in r["block"] for x in b.reasons):  # one caution per kind (not one per hour)
+        if _category(x) not in seen_cat:
+            seen_cat.add(_category(x))
+            cautions.append(x)
+    cautions = cautions[:5]
     why = list(dict.fromkeys(first.positives + s["site_why"]))[:5]
     return {
         "rank": rank, "place": v["name"], "kind": v.get("kind"), "osm_id": v["id"], "lat": v["lat"], "lon": v["lon"],
@@ -298,6 +312,14 @@ def _rec_dict(rank: int, r: dict, act, win) -> dict:
         "why": why, "cautions": cautions, "downwind": first.downwind[:2],
         "context": s["pc"].summary(),
     }
+
+
+def _plain(reason: str | None) -> str | None:
+    """'air quality: US AQI 127' -> 'air quality (US AQI 127)' so it reads well inside a sentence."""
+    if reason and ": " in reason:
+        head, tail = reason.split(": ", 1)
+        return f"{head} ({tail})"
+    return reason
 
 
 def _verdict(score: float, veto: str | None) -> str:
@@ -324,7 +346,7 @@ def _by_day(rows: list[dict]) -> list[dict]:
         out.append({"day": d.strftime("%A %d %b"), "day_score": day_score, "good_slots": good_hours,
                     "best_score": r["score"], "verdict": _verdict(r["score"], r["veto"]),
                     "best_place": r["s"]["venue"]["name"], "best_time": f"{r['start']:%H:%M}–{r['end']:%H:%M}",
-                    "main_issue": (r["veto"] or (r["block"][0].reasons[0] if r["block"][0].reasons else None))})
+                    "main_issue": _plain(r["veto"] or (r["block"][0].reasons[0] if r["block"][0].reasons else None))})
     return out
 
 

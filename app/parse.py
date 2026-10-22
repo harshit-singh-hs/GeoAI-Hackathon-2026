@@ -188,9 +188,9 @@ def _extract_json(text: str) -> dict | None:
             return None
 
 
-def parse_messages(query: str) -> list[dict]:
+def parse_messages(query: str, few_shot: bool = True) -> list[dict]:
     msgs = [{"role": "system", "content": PARSE_SYSTEM}]
-    for q, a in FEW_SHOT:
+    for q, a in (FEW_SHOT if few_shot else []):
         msgs += [{"role": "user", "content": q}, {"role": "assistant", "content": json.dumps(a)}]
     msgs.append({"role": "user", "content": query})
     return msgs
@@ -232,5 +232,5 @@ async def parse(query: str, llm=None) -> ParsedQuery:
     rules = parse_rules(query)
     if llm is None or not llm.ready:
         return rules
-    raw = await llm.chat(parse_messages(query), max_new_tokens=160, temperature=0.0)
+    raw = await llm.chat(parse_messages(query, few_shot=not llm.finetuned), max_new_tokens=160, temperature=0.0)
     return merge(query, rules, _extract_json(raw or ""))

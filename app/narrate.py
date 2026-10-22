@@ -211,60 +211,117 @@ def check_grounding(answer: str, facts: str) -> list[str]:
 
 # ---------------------------------------------------------------- template (fallback and reference)
 
-def template_answer(res: dict) -> str:
-    recs = res["recommendations"]
-    u = res["understood"]
-    top = recs[0]
-    intent = u.get("intent")
-    act = u["activity_name"].split(" (")[0].split(" /")[0].lower()
-    lines = []
-    e = res.get("exact_hour_check")
-    if intent == "go_no_go" and e:
-        if e["verdict"] in ("great", "good", "okay"):
-            lines.append(f"**Yes, {e['time']} works for {act}** ({e['verdict']}, score {e['score']:.0f}/100): {_cond(e['conditions'])}.")
-        else:
-            why = e.get("veto") or (e["issues"][0] if e.get("issues") else "conditions are poor")
-            lines.append(f"**Not ideal at {e['time']}**: {why}. Better: **{top['when']}** at {top['place']} (score {top['score']:.0f}/100).")
-    elif intent == "compare" and len(res.get("by_day", [])) > 1:
-        d = sorted(res["by_day"], key=lambda x: -x["day_score"])
-        lines.append(f"**{d[0]['day'].split()[0]} is the better choice**: best {d[0]['best_time']} at {d[0]['best_place']} "
-                     f"(day score {d[0]['day_score']:.0f}, {d[0]['good_slots']} good start times) vs {d[1]['day'].split()[0]} "
-                     f"(day score {d[1]['day_score']:.0f}, {d[1]['good_slots']} good start times"
-                     + (f", {d[1]['main_issue']}" if d[1].get("main_issue") else "") + ").")
-    elif top["verdict"] == "avoid":
-        lines.append(f"**I wouldn't plan {act} in this window**: {top['veto']}. Least-bad option below; consider another day.")
+ACT_VERB = {"running": "run", "cycling": "ride", "golf": "play", "cricket": "play", "football": "play", "tennis": "play",
+            "hiking": "hike", "walking": "walk", "picnic": "have the picnic", "event": "hold the event",
+            "photography": "shoot"}
+ACT_NOUN = {"running": "a run", "cycling": "a ride", "golf": "golf", "cricket": "cricket", "football": "football",
+            "tennis": "tennis", "hiking": "a hike", "walking": "a walk", "picnic": "a picnic", "event": "the event",
+            "photography": "photography"}
+
+
+def _sentence(x: str) -> str:
+    x = x.strip().rstrip(".")
+    return x[0].upper() + x[1:] + "." if x else ""
+
+
+def _conditions_sentence(m: dict) -> str:
+    parts = []
+    if m.get("feels_like_c") is not None:
+        parts.append(f"it should feel like {m['feels_like_c']:.0f}°C")
+    parts.append(f"rain chance is {m['rain_chance_pct']}%")
+    if m.get("us_aqi") is not None:
+        parts.append(f"air quality is {aqi_label(m['us_aqi'])} (US AQI {m['us_aqi']})")
     else:
-        lines.append(f"**Best bet: {top['place']} on {top['when']}** ({top['verdict']}, score {top['score']:.0f}/100).")
+        parts.append("the air-quality forecast doesn't reach that far")
+    return _sentence(", ".join(parts[:-1]) + " and " + parts[-1])
+
+
+def template_answer(res: dict, seed: int | None = None) -> str:
+    """Deterministic, grounded answer in the same style the SLM is trained to write (also the training target)."""
+    import random
+
+    rng = random.Random(seed if seed is not None else res.get("id", "x"))
+    recs, u = res["recommendations"], res["understood"]
+    top = recs[0]
+    aid = u.get("activity") or "walking"
+    verb, noun = ACT_VERB.get(aid, "go"), ACT_NOUN.get(aid, "this")
+    da = direct_answer(res)
+    lines: list[str] = []
+    e = res.get("exact_hour_check")
+    if da.startswith("YES,"):
+        lines.append(f"**Yes, {e['time']} works for {noun} at {e['place']}** ({e['verdict']}, score {e['score']:.0f}/100). "
+                     + _conditions_sentence(e["conditions"]))
+    elif da.startswith("NO,"):
+        why = e.get("veto") or (e["issues"][0] if e.get("issues") else "conditions are poor")
+        lead = f"**No, {e['time']} isn't a good time for {noun}: {why}.**"
+        if top["verdict"] != "avoid":
+            lead += f" A better option is {top['place']} on {top['when']} (score {top['score']:.0f}/100)."
+        lines.append(lead)
+    elif da.startswith("NOT RECOMMENDED"):
+        reasons = list(dict.fromkeys(a["reason"] for a in res.get("avoid", [])))[:3]
+        why = "; ".join(reasons) if reasons else (top["veto"] or (top["cautions"][0] if top["cautions"] else "poor conditions"))
+        problem = top["veto"] or (top["cautions"][0] if top["cautions"] else "conditions are poor")
+        lines.append(f"**Not recommended in this window: {why}.** If you must go, the least-bad option is "
+                     f"{top['place']} on {top['when']}, but {problem}.")
+    elif u.get("intent") == "compare" and len(res.get("by_day", [])) > 1:
+        d = sorted(res["by_day"], key=lambda x: -x["day_score"])
+        other = f" {d[1]['day'].split()[0]}'s main issue is {d[1]['main_issue']}." if d[1].get("main_issue") else ""
+        lines.append(f"**{d[0]['day'].split()[0]} is the better day for {noun}** (day score {d[0]['day_score']:.0f} vs "
+                     f"{d[1]['day_score']:.0f}). Best slot: {d[0]['best_place']} at {d[0]['best_time']}.{other}")
+    else:
+        opener = rng.choice(["Head to", "Go to", "Your best bet is", "Try"])
+        lines.append(f"**{opener} {top['place']} on {top['when']}** ({top['verdict']}, score {top['score']:.0f}/100). "
+                     + _conditions_sentence(top["conditions_at_start"]))
+    if u.get("profile_labels"):
+        lines[-1] += f" I've applied stricter heat and air-quality limits for {', '.join(u['profile_labels'])}."
     lines.append("")
     for r in recs:
-        trav = f", {r['distance_km']} km (~{r['travel']['minutes_free_flow']:.0f} min)" if r.get("travel") else ""
-        reason = r["why"][0] if r["why"] else (r["cautions"][0] if r["cautions"] else "")
-        lines.append(f"{r['rank']}. **{r['place']}** ({r['kind']}{trav}): {r['when']}, score {r['score']:.0f}. "
-                     f"{_cond(r['conditions_at_start'])}." + (f" {reason[0].upper() + reason[1:]}." if reason else ""))
+        trav = f", {r['distance_km']} km" + (f" (~{r['travel']['minutes_free_flow']:.0f} min)" if r.get("travel") else "") \
+            if r.get("distance_km") else ""
+        if r.get("veto"):
+            reason = f"Problem: {r['veto']}"
+        elif r is top and r["why"]:
+            reason = r["why"][0]
+        else:
+            reason = (r["cautions"][:1] or r["why"][:1] or [""])[0]
+        lines.append(f"{r['rank']}. **{r['place']}**{trav}: {r['when']}, score {r['score']:.0f}. {_sentence(reason)}".rstrip())
     if res.get("downwind_insight"):
-        lines += ["", f"🌬️ {res['downwind_insight']}"]
-    lines += ["", "**Carry:** " + "; ".join(res["advice"]["carry"][:6]) + ".",
-              "**Watch for:** " + "; ".join(res["advice"]["watch_for"][:5]) + "."]
+        lines += ["", f"**Place × time:** {res['downwind_insight']}"]
+    adv = res["advice"]
+    lines += ["", "**Carry:** " + "; ".join(adv["carry"][:5]) + ".",
+              "**Watch for:** " + "; ".join(adv["watch_for"][:4]) + "."]
     if res.get("avoid"):
-        lines.append("**Avoid:** " + "; ".join(f"{a['from']}–{a['to']} ({a['detail']})" for a in res["avoid"][:3]) + ".")
+        lines.append("**Avoid:** " + "; ".join(f"{a['from']}–{a['to']} ({a['reason']})" for a in res["avoid"][:3]) + ".")
     return "\n".join(lines)
 
 
-def check_decision(answer: str, res: dict) -> str | None:
-    """The opening of the answer must carry the same decision as DIRECT ANSWER."""
+def check_decision(answer: str, facts: str) -> str | None:
+    """The opening of the answer must carry the same decision as the DIRECT ANSWER line of the fact sheet."""
+    m = re.search(r"^DIRECT ANSWER: (.+)$", facts, re.M)
+    if not m:
+        return None
+    da = m.group(1)
     head = answer.strip().split("\n")[0].lower()
-    top = res["recommendations"][0]
-    da = direct_answer(res)
     if da.startswith("NOT RECOMMENDED"):  # also covers 'poor everywhere'
         return None if re.search(r"not recommended|wouldn.t|avoid|not (a )?good|no\b|unsafe|isn.t", head) else "lead must say not recommended"
     if da.startswith("NO,"):
         return None if re.search(r"\bno\b|not ideal|not recommended|avoid|isn.t|wouldn.t", head) else "lead must say no"
     if da.startswith("YES,"):
         return None if re.search(r"\byes\b|good|fine|okay|go ahead|works", head) else "lead must say yes"
-    if res["understood"].get("intent") == "compare" and len(res.get("by_day", [])) > 1:
-        day = da.split()[0].lower()
-        return None if day in head else f"lead must name {day.title()}"
-    return None if top["place"].lower() in head else f"lead must name {top['place']}"
+    if day := re.match(r"([A-Z]+DAY) is better", da):
+        return None if day.group(1).lower() in head else f"lead must name {day.group(1).title()}"
+    if place := re.match(r"GO TO (.+?) on \w{3} \d{1,2} \w{3}", da):
+        return None if place.group(1).lower() in head else f"lead must name {place.group(1)}"
+    return None
+
+
+def narrate_messages(facts: str, finetuned: bool) -> list[dict]:
+    """Zero-shot for the fine-tuned adapter (that's how it was trained); one worked example for the base model."""
+    msgs = [{"role": "system", "content": NARRATE_SYSTEM}]
+    if not finetuned:
+        msgs += [{"role": "user", "content": f"FACTS:\n{EXAMPLE_FACTS}\n\nWrite the reply."},
+                 {"role": "assistant", "content": EXAMPLE_ANSWER}]
+    return msgs + [{"role": "user", "content": f"FACTS:\n{facts}\n\nWrite the reply."}]
 
 
 async def narrate(res: dict, llm) -> None:
@@ -275,21 +332,19 @@ async def narrate(res: dict, llm) -> None:
     res["grounding"] = {"checked": False}
     if llm is None or not llm.ready:
         return
-    msgs = [{"role": "system", "content": NARRATE_SYSTEM},
-            {"role": "user", "content": f"FACTS:\n{EXAMPLE_FACTS}\n\nWrite the reply."},
-            {"role": "assistant", "content": EXAMPLE_ANSWER},
-            {"role": "user", "content": f"FACTS:\n{facts}\n\nWrite the reply."}]
+    msgs = narrate_messages(facts, llm.finetuned)
+    base_len = len(msgs)
     for attempt in range(2):
         out = await llm.chat(msgs, max_new_tokens=360, temperature=0.0 if attempt == 0 else 0.2)
         if not out:
             return
         bad = check_grounding(out, facts)
-        wrong = check_decision(out, res)
+        wrong = check_decision(out, facts)
         if wrong:
             bad.append(wrong)
         if not bad:
             res.update(answer=out.strip(), answer_source="slm", grounding={"checked": True, "passed": True, "attempts": attempt + 1})
             return
         res["grounding"] = {"checked": True, "passed": False, "unsupported": bad[:10], "attempts": attempt + 1}
-        msgs = msgs[:4] + [{"role": "assistant", "content": out},
+        msgs = msgs[:base_len] + [{"role": "assistant", "content": out},
                            {"role": "user", "content": f"These are not in the FACTS: {', '.join(bad[:8])}. Rewrite using only the FACTS."}]

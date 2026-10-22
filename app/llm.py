@@ -99,6 +99,10 @@ class LLM:
             log.exception("generation failed")
             return None
 
+    @property
+    def finetuned(self) -> bool:
+        return bool(self.adapter)
+
     def info(self) -> dict:
         return {"model": self.model_id, "adapter": self.adapter, "backend": self.backend, "ready": self.ready,
                 "error": self.error}

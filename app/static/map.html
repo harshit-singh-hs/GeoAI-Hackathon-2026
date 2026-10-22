@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Recommendation Map</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>html,body,#map{height:100%;margin:0;background:#f6f7f4} #t{position:absolute;z-index:1000;top:10px;left:50px;right:10px;background:#fff;padding:8px 12px;border-radius:8px;font:14px system-ui;box-shadow:0 1px 4px #0003}</style>
+</head>
+<body>
+<div id="t">Loading…</div><div id="map"></div>
+<script>
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const map = L.map("map"); L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"© OpenStreetMap contributors"}).addTo(map);
+fetch("/result/__RID__").then(r=>r.json()).then(d=>{
+  document.getElementById("t").innerHTML = `<b>${esc(d.query)}</b>`;
+  const pts=[]; (d.geojson?.features||[]).forEach(f=>{ const [lon,lat]=f.geometry.coordinates,p=f.properties; pts.push([lat,lon]);
+    const c=p.role==="origin"?"#2b6cb0":p.role==="recommended"?"#1f7a55":"#8a948f";
+    L.circleMarker([lat,lon],{radius:p.role==="recommended"?10:6,color:c,fillColor:c,fillOpacity:.85}).addTo(map)
+     .bindPopup(`<b>${p.rank?"#"+p.rank+" ":""}${esc(p.name)}</b>${p.when?"<br>"+esc(p.when)+" · score "+p.score:""}`); });
+  if (pts.length) map.fitBounds(pts,{padding:[40,40],maxZoom:14});
+});
+</script>
+</body>
+</html>

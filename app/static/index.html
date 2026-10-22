@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GeoAI Outdoor Planner</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+<style>
+:root { --bg:#f6f7f4; --card:#fff; --ink:#1d2421; --muted:#5f6b66; --line:#dfe3df; --accent:#1f7a55; --warn:#b4541a; --bad:#a3302a; --chip:#eaf2ed; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#131816; --card:#1b211f; --ink:#e6ece9; --muted:#9aa7a1; --line:#2c3531; --accent:#4cc38a; --warn:#e3925a; --bad:#ef7b72; --chip:#21302a; } }
+:root[data-theme="dark"] { --bg:#131816; --card:#1b211f; --ink:#e6ece9; --muted:#9aa7a1; --line:#2c3531; --accent:#4cc38a; --warn:#e3925a; --bad:#ef7b72; --chip:#21302a; }
+* { box-sizing:border-box }
+body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif }
+header { padding:20px 16px 8px; max-width:1180px; margin:auto }
+h1 { font-size:20px; margin:0 } header p { margin:4px 0 0; color:var(--muted) }
+main { max-width:1180px; margin:auto; padding:8px 16px 40px }
+form { display:flex; gap:8px } input { flex:1; min-width:0; padding:12px 14px; border-radius:10px; border:1px solid var(--line); background:var(--card); color:var(--ink); font-size:15px }
+button { padding:12px 18px; border:0; border-radius:10px; background:var(--accent); color:#fff; font-weight:600; cursor:pointer } button:disabled { opacity:.6 }
+.chips { display:flex; flex-wrap:wrap; gap:6px; margin:10px 0 16px } .chip { background:var(--chip); border:1px solid var(--line); color:var(--ink); padding:4px 10px; border-radius:999px; font-size:13px; cursor:pointer }
+.grid { display:grid; grid-template-columns: 1.1fr 1fr; gap:16px } @media (max-width:860px){ .grid { grid-template-columns:1fr } }
+.card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px 16px; margin-bottom:16px; overflow-wrap:anywhere }
+.card h2 { font-size:13px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); margin:0 0 8px }
+#map { height:380px; border-radius:12px; border:1px solid var(--line) }
+.answer p:first-child { margin-top:0 } .answer ol { padding-left:20px }
+.meta { color:var(--muted); font-size:13px }
+.kv { display:grid; grid-template-columns: max-content 1fr; gap:2px 12px; font-size:14px } .kv b { color:var(--muted); font-weight:500 }
+.opt { border-top:1px solid var(--line); padding:10px 0 } .opt:first-of-type { border-top:0; padding-top:0 }
+.pill { display:inline-block; padding:1px 8px; border-radius:999px; font-size:12px; font-weight:600; background:var(--chip) }
+.v-great,.v-good { color:var(--accent) } .v-okay { color:var(--warn) } .v-poor,.v-avoid { color:var(--bad) }
+ul.small { margin:4px 0; padding-left:18px; font-size:14px } .src { font-size:12.5px; color:var(--muted); word-break:break-all }
+.spinner { display:none; color:var(--muted) } .loading .spinner { display:block }
+footer { color:var(--muted); font-size:12px; max-width:1180px; margin:auto; padding:0 16px 24px }
+</style>
+</head>
+<body>
+<header>
+  <h1>GeoAI Outdoor Planner</h1>
+  <p>Ask where and when to go outdoors. Answers come from live OpenStreetMap, weather and air-quality data, written by a small open model.</p>
+</header>
+<main id="app">
+  <form id="f"><input id="q" placeholder="e.g. Where can I go running tomorrow evening near Koregaon Park?" autocomplete="off"><button id="go">Ask</button></form>
+  <div class="chips" id="chips"></div>
+  <p class="spinner" id="spin">Fetching live map, weather and air-quality data… (usually 5–30 s)</p>
+  <div id="out" hidden>
+    <div class="grid">
+      <div>
+        <div class="card"><h2>Answer</h2><div class="answer" id="answer"></div><p class="meta" id="answermeta"></p></div>
+        <div class="card" id="optcard"><h2>Options in detail</h2><div id="opts"></div></div>
+      </div>
+      <div>
+        <div id="map"></div>
+        <div class="card" style="margin-top:16px"><h2>What I understood</h2><div class="kv" id="understood"></div></div>
+        <div class="card" id="insightcard" hidden><h2>Place × time</h2><p id="insight" style="margin:0"></p></div>
+        <div class="card"><h2>Data used</h2><ul class="small" id="sources"></ul><ul class="small meta" id="notes"></ul></div>
+      </div>
+    </div>
+  </div>
+</main>
+<footer>Map data © OpenStreetMap contributors · Weather © Open-Meteo.com (CC BY 4.0) · Air quality: CAMS via Open-Meteo · Routing: OSRM</footer>
+<script>
+const EX = ["Where can I go running tomorrow evening near Koregaon Park?","Best time this weekend for a kids' cricket match within 15 km of Whitefield?",
+ "I have mild asthma, where's good for a morning walk near Powai in the next two days?","Is Saturday or Sunday better for a hike near Lonavala?",
+ "Where can I take sunset photos this evening around Bandra?","Outdoor tennis after work today near Hinjewadi, any good spots?"];
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+EX.forEach(x => { const b = document.createElement("button"); b.type="button"; b.className="chip"; b.textContent=x; b.onclick=()=>{ $("q").value=x; ask(); }; $("chips").appendChild(b); });
+let map, layer;
+function initMap(){ if (map) return; map = L.map("map"); L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19, attribution:"© OpenStreetMap contributors"}).addTo(map); layer = L.layerGroup().addTo(map); }
+function draw(gj){
+  initMap(); layer.clearLayers(); const pts=[];
+  (gj?.features||[]).forEach(f => { const [lon,lat]=f.geometry.coordinates, p=f.properties; pts.push([lat,lon]);
+    const color = p.role==="origin" ? "#2b6cb0" : p.role==="recommended" ? "#1f7a55" : "#8a948f";
+    const m = L.circleMarker([lat,lon],{radius:p.role==="recommended"?10:p.role==="origin"?7:5,color,fillColor:color,fillOpacity:.85,weight:2}).addTo(layer);
+    m.bindPopup(p.role==="origin" ? `<b>Search centre</b><br>${esc(p.name)}` : `<b>${p.rank?"#"+p.rank+" ":""}${esc(p.name)}</b><br>${esc(p.kind||"")}${p.score!=null?`<br>best: ${esc(p.when)} · score ${p.score}`:""}`);
+    if (p.rank) m.bindTooltip(String(p.rank),{permanent:true,direction:"center",className:""}); });
+  if (pts.length) map.fitBounds(pts,{padding:[30,30],maxZoom:14}); setTimeout(()=>map.invalidateSize(),50);
+}
+async function ask(){
+  const q = $("q").value.trim(); if(!q) return;
+  $("go").disabled=true; document.body.classList.add("loading");
+  try {
+    const r = await fetch("/ask",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({query:q})});
+    const d = await r.json(); if(!r.ok) throw new Error(d.detail||r.status); render(d);
+  } catch(e){ $("out").hidden=false; $("answer").innerHTML=`<p>Something went wrong: ${esc(e.message)}</p>`; }
+  finally { $("go").disabled=false; document.body.classList.remove("loading"); }
+}
+function render(d){
+  $("out").hidden=false;
+  $("answer").innerHTML = marked.parse(d.answer||"");
+  $("answermeta").textContent = `Written by: ${d.answer_source==="slm" ? (d.model?.name||"SLM")+" (grounding check passed)" : "deterministic template"} · ${(d.timing_ms/1000).toFixed(1)} s`;
+  const u = d.understood||{}, rows = [["Activity",u.activity_name||u.activity],["Place",u.resolved_location||u.location],["Radius",u.radius_km?u.radius_km+" km":null],
+    ["When",u.window],["Profile",(u.profile_labels||[]).join(", ")],["Question type",u.intent],["Parsed by",u.parser],["Status",d.status]];
+  $("understood").innerHTML = rows.filter(r=>r[1]).map(([k,v])=>`<b>${k}</b><span>${esc(v)}</span>`).join("");
+  const recs = d.recommendations||[]; $("optcard").hidden = !recs.length;
+  $("opts").innerHTML = recs.map(r => { const c=r.conditions_at_start||{}, ctx=r.context||{};
+    return `<div class="opt"><b>#${r.rank} ${esc(r.place)}</b> <span class="meta">${esc(r.kind)} · ${r.distance_km} km${r.travel?` · ~${Math.round(r.travel.minutes_free_flow)} min`:""}</span><br>
+    <span class="pill v-${r.verdict}">${r.verdict} · ${Math.round(r.score)}</span> ${esc(r.when)}
+    <ul class="small"><li>Feels ${c.feels_like_c??"?"}°C · rain ${c.rain_chance_pct}% · wind ${c.wind_from} ${Math.round(c.wind_kmh)} km/h · UV ${c.uv_index} · US AQI ${c.us_aqi??"n/a"}</li>
+    ${(r.why||[]).map(x=>`<li>✓ ${esc(x)}</li>`).join("")}${(r.cautions||[]).map(x=>`<li>⚠ ${esc(x)}</li>`).join("")}
+    ${ctx.nearest_major_road?`<li class="meta">Nearest major road: ${esc(ctx.nearest_major_road.name)} (${ctx.nearest_major_road.distance_m} m)</li>`:""}
+    ${(ctx.industry_within_2_5km||[]).length?`<li class="meta">Industry nearby: ${ctx.industry_within_2_5km.map(i=>esc(i.name)+" ("+i.distance_m+" m)").join(", ")}</li>`:""}
+    <li class="meta">Green cover within 600 m: ~${ctx.green_cover_600m_pct}%${ctx.nearest_water?` · water: ${esc(ctx.nearest_water.name)}`:""}</li></ul></div>`; }).join("");
+  $("insightcard").hidden = !d.downwind_insight; $("insight").textContent = d.downwind_insight||"";
+  const seen=new Set(); $("sources").innerHTML = (d.sources||[]).filter(s=>{const k=s.source+s.url; if(seen.has(k))return false; seen.add(k); return true;})
+    .map(s=>`<li><b>${esc(s.source)}</b> ${s.ok?"":"(failed) "}${s.cached?"(cached) ":""}<div class="src">${esc(s.url)}</div></li>`).join("");
+  $("notes").innerHTML = (d.data_notes||[]).map(n=>`<li>${esc(n)}</li>`).join("");
+  if (d.geojson) { $("map").style.display=""; draw(d.geojson); } else { $("map").style.display="none"; }
+}
+$("f").onsubmit = e => { e.preventDefault(); ask(); };
+const qp = new URLSearchParams(location.search).get("q"); if (qp) { $("q").value = qp; ask(); }
+</script>
+</body>
+</html>

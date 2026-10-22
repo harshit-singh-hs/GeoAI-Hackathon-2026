@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+.cache/
+cache/
+*.gguf
+outputs/
+finetune/out/
+finetune/data/*.jsonl
+.env
+data/osm/

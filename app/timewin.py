@@ -142,7 +142,13 @@ def resolve(text: str, now: datetime, max_days: int = 16) -> TimeWindow:
     exact = _parse_clock(t)
     if exact is not None and exact < 12 and hours[0] >= 12 and not re.search(r"\d\s*a\.?m", t):
         exact += 12  # "at 6 after work" -> 18:00
-    if exact is not None:
+    if exact is not None and re.search(r"\b(after|from|post|later than)\s+\d", t):
+        hours, part_label = (exact, min(24, exact + 5)), f"after {exact:02d}:00"
+        exact = None  # a range, not a go/no-go at one hour
+    elif exact is not None and re.search(r"\b(before|by|until|till)\s+\d", t):
+        hours, part_label = (max(5, exact - 4), exact), f"before {exact:02d}:00"
+        exact = None
+    elif exact is not None:
         hours = (max(0, exact - 2), min(24, exact + 3))
         part_label = f"around {exact:02d}:00"
     if re.search(r"\b(right now|now|currently|at the moment)\b", t) and exact is None and not part_label:

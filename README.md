@@ -151,7 +151,32 @@ GEOAI_OSM_MODE=local .venv/bin/python finetune/gen_narrate.py finetune/data/pars
 
 ## Evaluation
 
-__EVAL__
+**Held-out synthetic data** (200 parsing, 37 answer-writing examples; same checks as production):
+
+| | Base Qwen3.5-2B, few-shot prompts | Base + LoRA, zero-shot prompts |
+|---|---|---|
+| Parse: valid JSON | 100.0% | 100.0% |
+| Parse: activity correct | 77.0% | 100.0% |
+| Parse: place correct | 99.0% | 100.0% |
+| Parse: health profile correct | 93.5% | 100.0% |
+| Parse: question type correct | 58.0% | 100.0% |
+| Parse: all key fields correct | 71.5% | 100.0% |
+| Answer: grounding check passed | 75.7% | 100.0% |
+| Answer: decision check passed | 86.5% | 100.0% |
+| Answer: both passed | 64.9% | 100.0% |
+
+The held-out set comes from the same generators as the training data, so it measures how well the model learned the
+task format, not robustness to arbitrary phrasing. The end-to-end test below is the more honest measure.
+
+**End-to-end, 30 varied real-world questions** through the live system (10 rulebook examples, 14 other cities and phrasings, 6 messy or out-of-scope),
+`scripts/eval_queries.py`:
+
+| | Base, few-shot | Base + LoRA |
+|---|---|---|
+| Questions answered without error | 30 / 30 | 30 / 30 |
+| Recommendation questions answered by the SLM *and* passing all checks | 20 / 24 | 24 / 24 |
+| Clarify / decline / beyond-horizon handled gracefully | 6 / 6 | 6 / 6 |
+| Median latency (RTX 4000 Ada) | 12.2 s | 8.6 s |
 
 ## Limitations
 

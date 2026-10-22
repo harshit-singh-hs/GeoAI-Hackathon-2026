@@ -77,11 +77,12 @@ function draw(gj){
     if (p.rank) m.bindTooltip(String(p.rank),{permanent:true,direction:"center",className:""}); });
   if (pts.length) map.fitBounds(pts,{padding:[30,30],maxZoom:14}); setTimeout(()=>map.invalidateSize(),50);
 }
-async function ask(){
+async function ask(coords){
   const q = $("q").value.trim(); if(!q) return;
   $("go").disabled=true; document.body.classList.add("loading");
   try {
-    const r = await fetch("/ask",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({query:q})});
+    const body = {query:q}; if (coords) { body.lat = coords.latitude; body.lon = coords.longitude; }
+    const r = await fetch("/ask",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
     const d = await r.json(); if(!r.ok) throw new Error(d.detail||r.status); render(d);
   } catch(e){ $("out").hidden=false; $("answer").innerHTML=`<p>Something went wrong: ${esc(e.message)}</p>`; }
   finally { $("go").disabled=false; document.body.classList.remove("loading"); }
@@ -89,6 +90,11 @@ async function ask(){
 function render(d){
   $("out").hidden=false;
   $("answer").innerHTML = marked.parse(d.answer||"");
+  if (d.status==="clarify" && !(d.understood||{}).location && d.understood?.activity && navigator.geolocation) {
+    const b = document.createElement("button"); b.type="button"; b.textContent="Use my location";
+    b.onclick = () => navigator.geolocation.getCurrentPosition(p => ask(p.coords), e => alert("Location unavailable: "+e.message));
+    $("answer").appendChild(b);
+  }
   $("answermeta").textContent = `Written by: ${d.answer_source==="slm" ? (d.model?.name||"SLM")+" (grounding check passed)" : "deterministic template"} · ${(d.timing_ms/1000).toFixed(1)} s`;
   const u = d.understood||{}, rows = [["Activity",u.activity_name||u.activity],["Place",u.resolved_location||u.location],["Radius",u.radius_km?u.radius_km+" km":null],
     ["When",u.window],["Profile",(u.profile_labels||[]).join(", ")],["Question type",u.intent],["Parsed by",u.parser],["Status",d.status]];

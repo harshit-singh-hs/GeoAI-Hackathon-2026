@@ -335,7 +335,7 @@ async def narrate(res: dict, llm) -> None:
     msgs = narrate_messages(facts, llm.finetuned)
     base_len = len(msgs)
     for attempt in range(2):
-        out = await llm.chat(msgs, max_new_tokens=360, temperature=0.0 if attempt == 0 else 0.2)
+        out = await llm.chat(msgs, max_new_tokens=520, temperature=0.0 if attempt == 0 else 0.2)
         if not out:
             return
         bad = check_grounding(out, facts)

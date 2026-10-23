@@ -109,7 +109,7 @@ function render(d){
   $("understood").innerHTML = rows.filter(r=>r[1]).map(([k,v])=>`<b>${k}</b><span>${esc(v)}</span>`).join("");
   const recs = d.recommendations||[]; $("optcard").hidden = !recs.length;
   $("opts").innerHTML = recs.map(r => { const c=r.conditions_at_start||{}, ctx=r.context||{};
-    return `<div class="opt"><b>#${r.rank} ${esc(r.place)}</b> <span class="meta">${esc(r.kind)} · ${r.distance_km} km${r.travel?` · ~${Math.round(r.travel.minutes_free_flow)} min`:""}</span><br>
+    return `<div class="opt"><b>#${r.rank} ${esc(r.place)}</b> <span class="meta">${esc(r.kind)} · ${r.distance_km} km${r.travel?` · ~${Math.round(r.travel.minutes_free_flow)} min`:""}</span>${r.requested?` <span class="pill">the place you asked about</span>`:""}<br>
     <span class="pill v-${r.verdict}">${r.verdict} · ${Math.round(r.score)}</span> ${esc(r.when)}
     <ul class="small"><li>Feels ${c.feels_like_c??"?"}°C · rain ${c.rain_chance_pct}% · wind ${c.wind_from} ${Math.round(c.wind_kmh)} km/h · UV ${c.uv_index} · US AQI ${c.us_aqi??"n/a"}</li>
     ${(r.why||[]).map(x=>`<li>✓ ${esc(x)}</li>`).join("")}${(r.cautions||[]).map(x=>`<li>⚠ ${esc(x)}</li>`).join("")}

@@ -49,6 +49,9 @@ STOP = (r"(?=\s*(?:[,?.!;]|$|\bfor\b|\bwith\b|\bwithin\b|\btomorrow\b|\btoday\b|
         r"\bsaturday\b|\bsunday\b|\bmonday\b|\btuesday\b|\bwednesday\b|\bthursday\b|\bfriday\b|\bweekend\b))")
 
 
+STOP_NEAR = STOP.replace("[,?.!;]", "[?.!;]")  # a comma may sit inside a place name ("Salt Lake, Kolkata")
+
+
 def _find_activity(t: str) -> tuple[str | None, str | None]:
     best = None
     for aid, a in ACTIVITIES.items():
@@ -87,13 +90,14 @@ def _trim_location(cand: str) -> str:
 def _find_location(q: str) -> str | None:
     pats = [
         rf"\b(?:km|kms|kilometers?|kilometres?|minutes?|mins?)\s+(?:of|from|around)\s+([A-Za-z][\w .'-]+?){STOP}",
-        r"\b(?:near|nearby|around|close to|in|from|at|towards|to)\s+([A-Z][\w.'-]*(?:\s+[A-Z][\w.'-]*)*(?:,\s*[A-Z][\w.'-]*)?)\b",
-        rf"\b(?:near|nearby|around|close to)\s+([a-z][\w .'-]+?){STOP}",
+        # "near X" takes the whole phrase in any case ("near Ambedkar park gorakhpur", "near Salt Lake, Kolkata")
+        rf"\b(?:near|nearby|around|close to)\s+([A-Za-z][\w .,'-]+?){STOP_NEAR}",
+        r"\b(?:in|from|at|towards|to)\s+([A-Z][\w.'-]*(?:\s+[A-Z][\w.'-]*)*(?:,\s*[A-Z][\w.'-]*)?)\b",
         rf"\b(?:in|at|from)\s+([a-z][\w.'-]+(?:\s+[a-z][\w.'-]+)?){STOP}",
     ]
     for p in pats:
         for m in re.finditer(p, q):
-            cand = _trim_location(m.group(1).strip(" ,.'"))
+            cand = _trim_location(m.group(1).strip(" ,.'")).strip(" ,")
             if cand and not re.fullmatch(TIME_WORDS, cand.lower()) and not re.match(NOT_PLACES, cand.lower()):
                 return cand
     return None

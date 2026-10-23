@@ -210,10 +210,12 @@ async def run(query: str, llm=None, lat: float | None = None, lon: float | None 
     # Best distinct venues, each at its own best start time. A venue the user named always comes first.
     slot_rows.sort(key=lambda r: (r["veto"] is None, r["raw"]), reverse=True)  # least-bad still ranks sensibly
     recs, used = [], set()
-    named_rows = [r for r in slot_rows if r["s"]["venue"].get("requested")]
-    if named_rows:
-        recs.append(named_rows[0])
-        used.add(named_rows[0]["s"]["venue"]["id"])
+    named = next((r for r in slot_rows if r["s"]["venue"].get("requested")), None)
+    best_other = next((r for r in slot_rows if not r["s"]["venue"].get("requested")), None)
+    if named and (best_other is None or ((named["veto"] is None) >= (best_other["veto"] is None)
+                                         and named["raw"] >= best_other["raw"] - 5)):
+        recs.append(named)  # the place the user named, unless something else is clearly better
+        used.add(named["s"]["venue"]["id"])
     for r in slot_rows:
         vid = r["s"]["venue"]["id"]
         if vid in used:
@@ -222,6 +224,8 @@ async def run(query: str, llm=None, lat: float | None = None, lon: float | None 
         recs.append(r)
         if len(recs) == 3:
             break
+    if named and named not in recs:
+        recs[-1] = named  # always show the place they asked about
 
     res.update(
         status="ok",
@@ -302,6 +306,7 @@ def _rec_dict(rank: int, r: dict, act, win) -> dict:
     why = list(dict.fromkeys(first.positives + s["site_why"]))[:5]
     return {
         "rank": rank, "place": v["name"], "kind": v.get("kind"), "osm_id": v["id"], "lat": v["lat"], "lon": v["lon"],
+        "requested": bool(v.get("requested")),
         "distance_km": v.get("dist_km"),
         "travel": ({"minutes_free_flow": s["travel"]["minutes"], "km": s["travel"]["km"],
                     "estimated": s["travel"]["estimated"], "mode": act.travel_mode} if s["travel"] else None),

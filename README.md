@@ -201,7 +201,7 @@ task format, not robustness to arbitrary phrasing. The end-to-end test below is 
 * **Model:** Qwen/Qwen3.5-2B + our LoRA adapter (above). No hosted LLM is used by the running assistant.
 * **Data:** the sources listed above, nothing else.
 * **Libraries:** FastAPI, Uvicorn, httpx, PyTorch, Transformers, PEFT, flash-linear-attention, pyosmium, timezonefinder, Leaflet, marked.
-* **Tools:** __TOOLS_DISCLOSURE__
+* **Tools:** an AI coding assistant (Claude Code) was used for writing code during development. No hosted LLM is part of the running assistant.
 
 ## License
 

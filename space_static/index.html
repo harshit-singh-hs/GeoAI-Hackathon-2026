@@ -102,7 +102,8 @@ function render(d){
     b.onclick = () => navigator.geolocation.getCurrentPosition(p => ask(p.coords), e => alert("Location unavailable: "+e.message));
     $("answer").appendChild(b);
   }
-  $("answermeta").textContent = `Written by: ${d.answer_source==="slm" ? (d.model?.name||"SLM")+" (grounding check passed)" : "deterministic template"} · ${(d.timing_ms/1000).toFixed(1)} s`;
+  const slm = (d.model?.name || "SLM") + (d.model?.adapter ? " + fine-tuned LoRA" : "");
+  $("answermeta").textContent = `Written by: ${d.answer_source==="slm" ? slm+" (grounding check passed)" : "deterministic writer"} · ${(d.timing_ms/1000).toFixed(1)} s`;
   const u = d.understood||{}, rows = [["Activity",u.activity_name||u.activity],["Place",u.resolved_location||u.location],["Radius",u.radius_km?u.radius_km+" km":null],
     ["When",u.window],["Profile",(u.profile_labels||[]).join(", ")],["Question type",u.intent],["Parsed by",u.parser],["Status",d.status]];
   $("understood").innerHTML = rows.filter(r=>r[1]).map(([k,v])=>`<b>${k}</b><span>${esc(v)}</span>`).join("");

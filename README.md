@@ -8,18 +8,20 @@ component is a **small open model (Qwen3.5-2B, 1.88B parameters in text mode) wi
 
 | | |
 |---|---|
-| **Live API endpoint** | `https://__STABLE_URL__/ask` (web UI at `https://__STABLE_URL__/`) |
-| **Model on Hugging Face** | `https://huggingface.co/__HF_USER__/geoai-outdoor-qwen3.5-2b-lora` |
+| **Live API endpoint** | `https://express-gmbh-constitutional-compromise.trycloudflare.com/ask` |
+| **Web UI (permanent link)** | https://namasteworld-geoai-outdoor-planner.static.hf.space (always finds the current API address) |
+| **If the API address ever changes** | the current one is always at https://namasteworld-geoai-outdoor-planner.static.hf.space/backend.json |
+| **Model on Hugging Face** | https://huggingface.co/NamasteWorld/geoai-outdoor-qwen3.5-2b-lora |
 | **Base model** | [`Qwen/Qwen3.5-2B`](https://huggingface.co/Qwen/Qwen3.5-2B) (Apache-2.0) |
 
 ## Try it
 
 ```bash
-curl -s https://__STABLE_URL__/ask -H 'Content-Type: application/json' \
+curl -s https://express-gmbh-constitutional-compromise.trycloudflare.com/ask -H 'Content-Type: application/json' \
      -d '{"query": "Is Saturday or Sunday better for a hike near Lonavala?"}' | jq .answer
 
 # or simply open in a browser
-https://__STABLE_URL__/ask?q=Where+can+I+go+running+tomorrow+evening+near+Koregaon+Park
+https://express-gmbh-constitutional-compromise.trycloudflare.com/ask?q=Where+can+I+go+running+tomorrow+evening+near+Koregaon+Park
 ```
 
 A response contains:
@@ -106,7 +108,7 @@ Load it:
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from peft import PeftModel
 base = AutoModelForCausalLM.from_pretrained("Qwen/Qwen3.5-2B", dtype="bfloat16")
-model = PeftModel.from_pretrained(base, "__HF_USER__/geoai-outdoor-qwen3.5-2b-lora")
+model = PeftModel.from_pretrained(base, "NamasteWorld/geoai-outdoor-qwen3.5-2b-lora")
 tok = AutoTokenizer.from_pretrained("Qwen/Qwen3.5-2B")
 ```
 
@@ -133,7 +135,7 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 mkdir -p data/osm && curl -L -o data/osm/india-latest.osm.pbf https://download.geofabrik.de/asia/india-latest.osm.pbf
 .venv/bin/python scripts/build_osm_index.py data/osm/india-latest.osm.pbf data/osm/osm_index.sqlite   # ~4 min
 
-GEOAI_MODEL=Qwen/Qwen3.5-2B GEOAI_ADAPTER=__HF_USER__/geoai-outdoor-qwen3.5-2b-lora \
+GEOAI_MODEL=Qwen/Qwen3.5-2B GEOAI_ADAPTER=NamasteWorld/geoai-outdoor-qwen3.5-2b-lora \
   .venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 

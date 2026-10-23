@@ -1,15 +1,20 @@
-"""Keep the Hugging Face Space gateway pointed at the current Cloudflare tunnel URL.
+"""Keep the static Hugging Face Space pointed at the current Cloudflare tunnel URL.
 
-Run periodically (systemd timer). Reads the latest *.trycloudflare.com URL from the tunnel service's journal and, if
-it differs from the Space's TARGET_URL variable, updates it (the Space restarts with the new target).
+Run periodically (systemd timer). Reads the latest *.trycloudflare.com URL from the tunnel service's journal and,
+when it changes, uploads it as backend.json to the Space, whose page reads that file to find the API.
 
 Usage: python scripts/sync_tunnel_url.py <hf-user>/<space-name>
 """
+import json
+import os
 import re
 import subprocess
 import sys
+from datetime import datetime, timezone
 
 from huggingface_hub import HfApi
+
+STATE = "cache/backend_url.txt"
 
 
 def current_tunnel_url() -> str | None:
@@ -24,13 +29,17 @@ def main(space: str) -> None:
     if not url:
         print("no tunnel URL found")
         return
-    api = HfApi()
-    current = api.get_space_variables(space).get("TARGET_URL")
-    if current is None or current.value != url:
-        api.add_space_variable(space, "TARGET_URL", url)
-        print(f"updated TARGET_URL -> {url}")
-    else:
+    last = open(STATE).read().strip() if os.path.exists(STATE) else None
+    if url == last:
         print(f"unchanged: {url}")
+        return
+    body = json.dumps({"url": url, "updated": datetime.now(timezone.utc).isoformat(timespec="seconds")}, indent=1)
+    HfApi().upload_file(path_or_fileobj=body.encode(), path_in_repo="backend.json", repo_id=space,
+                        repo_type="space", commit_message="Update backend URL")
+    os.makedirs(os.path.dirname(STATE), exist_ok=True)
+    with open(STATE, "w") as f:
+        f.write(url)
+    print(f"updated backend.json -> {url}")
 
 
 if __name__ == "__main__":

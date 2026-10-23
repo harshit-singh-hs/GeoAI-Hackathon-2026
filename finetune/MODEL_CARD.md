@@ -29,7 +29,7 @@ air-quality data. The model does two jobs in that system:
 It is not a general weather or travel model and holds no world knowledge the planner relies on; all facts come from data fetched at query time.
 
 * Code, data generation and evaluation: https://github.com/harshit-singh-hs/GeoAI-Hackathon-2026
-* Live endpoint: __STABLE_URL__
+* Live endpoint: listed in the GitHub README
 
 ## Base model and changes
 
@@ -102,7 +102,7 @@ from peft import PeftModel
 
 tok = AutoTokenizer.from_pretrained("Qwen/Qwen3.5-2B")
 base = AutoModelForCausalLM.from_pretrained("Qwen/Qwen3.5-2B", dtype="bfloat16")
-model = PeftModel.from_pretrained(base, "__HF_REPO__")
+model = PeftModel.from_pretrained(base, "NamasteWorld/geoai-outdoor-qwen3.5-2b-lora")
 
 msgs = [{"role": "system", "content": PARSE_SYSTEM},  # from app/parse.py
         {"role": "user", "content": "my 70 yr old dad wants a walk near cubbon park tmrw morning"}]

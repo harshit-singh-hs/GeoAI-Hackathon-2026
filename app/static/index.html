@@ -58,12 +58,18 @@ footer { color:var(--muted); font-size:12px; max-width:1180px; margin:auto; padd
     </div>
   </div>
 </main>
-<footer>Map data © OpenStreetMap contributors · Weather © Open-Meteo.com (CC BY 4.0) · Air quality: CAMS via Open-Meteo · Routing: OSRM</footer>
+<footer><div id="endpoint" style="margin-bottom:6px;word-break:break-all"></div>Map data © OpenStreetMap contributors · Weather © Open-Meteo.com (CC BY 4.0) · Air quality: CAMS via Open-Meteo · Routing: OSRM</footer>
 <script>
 const EX = ["Where can I go running tomorrow evening near Koregaon Park?","Best time this weekend for a kids' cricket match within 15 km of Whitefield?",
  "I have mild asthma, where's good for a morning walk near Powai in the next two days?","Is Saturday or Sunday better for a hike near Lonavala?",
  "Where can I take sunset photos this evening around Bandra?","Outdoor tennis after work today near Hinjewadi, any good spots?"];
 const $ = id => document.getElementById(id);
+// Same-origin when served by the API; on the static Hugging Face Space the current backend URL comes from backend.json.
+let API = "";
+const apiReady = location.hostname.endsWith("hf.space")
+  ? fetch("backend.json", {cache: "no-store"}).then(r => r.json()).then(j => { API = j.url.replace(/\/$/, ""); showEndpoint(); }).catch(() => {})
+  : Promise.resolve(showEndpoint());
+function showEndpoint(){ const e = $("endpoint"); if (e) e.textContent = `API: POST ${API || location.origin}/ask  {"query": "..."}`; }
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 EX.forEach(x => { const b = document.createElement("button"); b.type="button"; b.className="chip"; b.textContent=x; b.onclick=()=>{ $("q").value=x; ask(); }; $("chips").appendChild(b); });
 let map, layer;
@@ -82,7 +88,8 @@ async function ask(coords){
   $("go").disabled=true; document.body.classList.add("loading");
   try {
     const body = {query:q}; if (coords) { body.lat = coords.latitude; body.lon = coords.longitude; }
-    const r = await fetch("/ask",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+    await apiReady;
+    const r = await fetch(API + "/ask",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
     const d = await r.json(); if(!r.ok) throw new Error(d.detail||r.status); render(d);
   } catch(e){ $("out").hidden=false; $("answer").innerHTML=`<p>Something went wrong: ${esc(e.message)}</p>`; }
   finally { $("go").disabled=false; document.body.classList.remove("loading"); }

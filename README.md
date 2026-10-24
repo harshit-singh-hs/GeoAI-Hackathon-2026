@@ -13,6 +13,7 @@ component is a **small open model (Qwen3.5-2B, 1.88B parameters in text mode) wi
 | **If the API address ever changes** | the current one is always at https://namasteworld-geoai-outdoor-planner.static.hf.space/backend.json |
 | **Model on Hugging Face** | https://huggingface.co/NamasteWorld/geoai-outdoor-qwen3.5-2b-lora |
 | **Base model** | [`Qwen/Qwen3.5-2B`](https://huggingface.co/Qwen/Qwen3.5-2B) (Apache-2.0) |
+| **Slides** | [docs/GeoAI-Outdoor-Planner-slides.pdf](docs/GeoAI-Outdoor-Planner-slides.pdf) |
 
 ## Try it
 
